@@ -61,25 +61,13 @@ void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
   free(buf->base);
 }
 
-void scream(write_req_t* req){
-  fprintf(stderr, "screaming rn \n");
-  // User* walker = userlist->next;
-  User* walker = userlist;
-  // while(walker->next != NULL){
-  //   uv_write((uv_write_t*) req, (uv_stream_t*) walker, &req->buf,1,echo_write);
-  //   walker = walker->next;
-  // }
-}
-
 void listening(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
   //check to make sure valid message (read and in buffer)
-  if (nread > 0 && buf->len != 0){
+  if (nread > 0 && buf->len == 0){
     //create request and initialize buffer
     write_req_t* req = (write_req_t*) malloc(sizeof(write_req_t));
-    fprintf(stderr, "msg: %s\n",buf->base);
     req->buf = uv_buf_init(buf->base, nread);
     scream(req);
-    return;
   }
   //error case
   if (nread < 0){
@@ -87,6 +75,14 @@ void listening(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
     return;
   }
   free(buf->base);
+}
+
+void scream(write_req_t* req){
+  User* walker = userlist;
+  while(walker->next != NULL){
+    uv_write((uv_write_t*) req, (uv_stream_t*) walker, &req->buf,1,echo_write);
+    walker = walker->next;
+  }
 }
 
 void on_new_connection(uv_stream_t *server, int status){
