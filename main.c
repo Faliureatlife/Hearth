@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <uv.h>
 
 #define DEFAULT_PORT 7000
@@ -21,6 +22,7 @@ struct User {
 
 User* userlist;
 User* latestusr;
+
 void free_write_req(uv_write_t* req){
   write_req_t* wr = (write_req_t*) req;
   free(wr->buf.base);
@@ -43,7 +45,9 @@ void on_close(uv_handle_t* handle){
 
 void echo_write(uv_write_t* req, int status){
   if (status) fprintf(stderr, "Write error %s\n",uv_strerror(status));
-  free_write_req(req);
+  // free_write_req(req);
+  // no free shared buffer
+  free(req);
 }
 
 void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
@@ -56,6 +60,7 @@ void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
   if (nread < 0){
     if (nread != UV_EOF)
       fprintf(stderr, "Read error %s\n",uv_strerror(nread));
+
     uv_close((uv_handle_t*) client, on_close);
   }
   free(buf->base);
@@ -63,22 +68,44 @@ void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
 
 void scream(write_req_t* req){
   fprintf(stderr, "screaming rn \n");
-  // User* walker = userlist->next;
-  User* walker = userlist;
-  // while(walker->next != NULL){
-  //   uv_write((uv_write_t*) req, (uv_stream_t*) walker, &req->buf,1,echo_write);
-  //   walker = walker->next;
-  // }
+  User* walker = userlist->next;
+  while(walker != NULL){
+    write_req_t* newreq = (write_req_t*) malloc(sizeof(write_req_t));
+    newreq->buf = uv_buf_init(req->buf.base, req->buf.len);
+    uv_write((uv_write_t*) newreq, walker->user_handle, &req->buf,1,echo_write);
+    walker = walker->next;
+  }
+  // free(req);
+}
+
+void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
+  //this is where we do the input validation and processing of the commands etc.
+  write_req_t* req = (write_req_t*) malloc(sizeof(write_req_t));
+  req->buf = uv_buf_init(buf->base, nread);
+
+  char* exitcheck = (char*)calloc(1, 4*sizeof(char));
+
+  //sscanf for parsing if needed 
+  sscanf(req->buf.base, "%s4",exitcheck);
+  fprintf(stderr, "exitcheck is %s\n",exitcheck);
+  //check to see if the beginning of the string is exit
+  if (!strcmp("exit",exitcheck)){
+    uv_close((uv_handle_t*) handle, on_close);
+    free(exitcheck);
+    free(buf->base);
+    return;
+  }
+  free(exitcheck);
+  //create request and initialize buffer
+  scream(req);
+  free(buf->base);
 }
 
 void listening(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
   //check to make sure valid message (read and in buffer)
   if (nread > 0 && buf->len != 0){
-    //create request and initialize buffer
-    write_req_t* req = (write_req_t*) malloc(sizeof(write_req_t));
-    fprintf(stderr, "msg: %s\n",buf->base);
-    req->buf = uv_buf_init(buf->base, nread);
-    scream(req);
+    //go on to send the message out
+    disseminate(client,nread,buf);
     return;
   }
   //error case
@@ -103,8 +130,10 @@ void on_new_connection(uv_stream_t *server, int status){
     //read from client, to the allocation callback (arg 2) and uses the function in (arg 3)
     // add_user(/* idk*/)
     User* newusr = (User*) malloc(sizeof(User));
-    newusr->user_handle = (uv_stream_t*) client;
+    latestusr->next = newusr;
     newusr->last = latestusr;
+    newusr->user_handle = (uv_stream_t*) client;
+    newusr->next = NULL;
     latestusr = newusr;
 
     uv_read_start((uv_stream_t*) client, alloc_buffer, listening);
@@ -148,11 +177,7 @@ int main(int argc, char* argv[]){
   }
 
 
-  uv_tcp_t* source_usr= (uv_tcp_t*) malloc(sizeof(uv_tcp_t));
-  User* userlist = (User*) malloc(sizeof(User));
-  User* latestusr = (User*) malloc(sizeof(User));
-  uv_tcp_init(loop, source_usr);
-  userlist->user_handle = (uv_stream_t*)source_usr;
+  userlist = (User*) malloc(sizeof(User));
   userlist->next = NULL; 
   userlist->last = NULL;
   latestusr = userlist;
