@@ -5,6 +5,7 @@
 
 #define DEFAULT_PORT 7000
 #define BACKLOG 128
+#define MAX_MSG_LEN 4096
 uv_loop_t* loop;
 struct sockaddr_in addr;
 
@@ -75,28 +76,55 @@ void scream(write_req_t* req){
     uv_write((uv_write_t*) newreq, walker->user_handle, &req->buf,1,echo_write);
     walker = walker->next;
   }
-  // free(req);
 }
 
 void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
   //this is where we do the input validation and processing of the commands etc.
   write_req_t* req = (write_req_t*) malloc(sizeof(write_req_t));
   req->buf = uv_buf_init(buf->base, nread);
-
-  char* exitcheck = (char*)calloc(1, 4*sizeof(char));
-
-  //sscanf for parsing if needed 
-  sscanf(req->buf.base, "%s4",exitcheck);
-  fprintf(stderr, "exitcheck is %s\n",exitcheck);
-  //check to see if the beginning of the string is exit
-  if (!strcmp("exit",exitcheck)){
-    uv_close((uv_handle_t*) handle, on_close);
-    free(exitcheck);
-    free(buf->base);
-    return;
+  if (nread > MAX_MSG_LEN){
+    sprintf(buf->base, "ERR: message too long; %d and the max is %d\n", nread, MAX_MSG_LEN);
   }
-  free(exitcheck);
-  //create request and initialize buffer
+
+  //checking the non-user portion
+  {
+    // char* exitcheck = (char*)calloc(1, MAX_MSG_LEN*sizeof(char));
+    
+    //repeat until all are parsed 
+    // for(;;)
+    char* commands[];
+    char* tbuf = malloc(sizeof(char)*MAX_MSG_LEN);
+    sscanf(req->buf.base, "%s~",tbuf);
+    commands = (char*)malloc(sizeof(char) * (strlen(tbuf)+1));
+    int n = 0;
+    char* ttbuf = malloc(sizeof(char)*MAX_MSG_LEN);
+
+    while (sscanf(tbuf, "%[^:]:%s",commands[n],ttbuf) == 2){
+      n += 1;
+      strncpy(tbuf, ttbuf, MAX_MSG_LEN); 
+    }
+    if (tbuf[0] != '\0'){
+      strncpy (commands[n++], tbuf, MAX_MSG_LEN);
+    }
+    
+    /* HERE WE HAVE A COMMANDS ARRAY*/
+    /* HERE WE HAVE A COMMANDS ARRAY*/
+    /* HERE WE HAVE A COMMANDS ARRAY*/
+
+    //sscanf for parsing if needed 
+    //read commands, delimited by `
+    sscanf(, "%s`%s",);
+    fprintf(stderr, "exitcheck is %s\n",exitcheck);
+    //check to see if the beginning of the string is exit
+    if (!strcmp("exit",exitcheck)){
+      uv_close((uv_handle_t*) handle, on_close);
+      free(exitcheck);
+      free(buf->base);
+      return;
+    }
+    free(exitcheck);
+  }
+  
   scream(req);
   free(buf->base);
 }
@@ -126,24 +154,44 @@ void on_new_connection(uv_stream_t *server, int status){
   //accept the connecion, handle initialized, server + client must be same loop
   if (uv_accept(server, (uv_stream_t*) client) == 0){
     fprintf(stderr, "newusr\n");
+    add_user(client);
 
     //read from client, to the allocation callback (arg 2) and uses the function in (arg 3)
-    // add_user(/* idk*/)
-    User* newusr = (User*) malloc(sizeof(User));
-    latestusr->next = newusr;
-    newusr->last = latestusr;
-    newusr->user_handle = (uv_stream_t*) client;
-    newusr->next = NULL;
-    latestusr = newusr;
-
     uv_read_start((uv_stream_t*) client, alloc_buffer, listening);
   }
 }
 
-
-void add_user(uv_tcp_t* newUser){
+void add_user(uv_tcp_t* handle){
+  User* newusr = (User*) malloc(sizeof(User));
+  latestusr->next = newusr;
+  newusr->last = latestusr;
+  newusr->user_handle = (uv_stream_t*) handle;
+  newusr->next = NULL;
+  latestusr = newusr;
 }
 
+/* TODO:
+ * --------------------
+ *  Server
+ *
+ * - User ID
+ * - Basic commands
+ * - Channels
+ * - Admin commands
+ * - User profile storage
+ * - Buffered Chat history
+ * - User Roles
+ *
+ * ------------
+ * Client
+ *
+ * - Give Profile name
+ * - Text Customization
+ * - Test replacement command
+ * - Emotes
+ * - Role permissions
+ * - Connect to specified server
+ */
 int main(int argc, char* argv[]){
   //this is where we will enter into the server
   //need to create IP binds, and general logic
