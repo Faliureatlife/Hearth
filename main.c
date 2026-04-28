@@ -40,7 +40,21 @@ void timer_callback(uv_timer_t* handle){
   printf("timer time\n");
 }
 
+//TODO: SPAWN THREAD TO DO THIS INSTEAD
+void rm_user(uv_stream_t* handle){
+  User* walker = userlist->next;// userlist is a dummy head for simplicity
+  while(walker != NULL){
+    if (walker->user_handle == handle){
+      walker->last->next = walker->next;
+      walker->next->last = walker->last;
+      free(walker);
+    }
+    walker = walker->next;
+  }
+}
+
 void on_close(uv_handle_t* handle){
+  rm_user((uv_stream_t*)handle); //uv_stream_t
   free(handle);
 }
 
@@ -78,54 +92,80 @@ void scream(write_req_t* req){
   }
 }
 
+void add_user(uv_tcp_t* handle){
+  User* newusr = (User*) malloc(sizeof(User));
+  latestusr->next = newusr;
+  newusr->last = latestusr;
+  newusr->user_handle = (uv_stream_t*) handle;
+  newusr->next = NULL;
+  latestusr = newusr;
+}
+
+
 void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
   //this is where we do the input validation and processing of the commands etc.
   write_req_t* req = (write_req_t*) malloc(sizeof(write_req_t));
   req->buf = uv_buf_init(buf->base, nread);
-  if (nread > MAX_MSG_LEN){
+  if (nread > (ssize_t)MAX_MSG_LEN){
     sprintf(buf->base, "ERR: message too long; %d and the max is %d\n", nread, MAX_MSG_LEN);
   }
 
-  //checking the non-user portion
-  {
-    // char* exitcheck = (char*)calloc(1, MAX_MSG_LEN*sizeof(char));
-    
-    //repeat until all are parsed 
-    // for(;;)
-    char* commands[];
-    char* tbuf = malloc(sizeof(char)*MAX_MSG_LEN);
-    sscanf(req->buf.base, "%s~",tbuf);
-    commands = (char*)malloc(sizeof(char) * (strlen(tbuf)+1));
-    int n = 0;
-    char* ttbuf = malloc(sizeof(char)*MAX_MSG_LEN);
-
-    while (sscanf(tbuf, "%[^:]:%s",commands[n],ttbuf) == 2){
-      n += 1;
-      strncpy(tbuf, ttbuf, MAX_MSG_LEN); 
-    }
-    if (tbuf[0] != '\0'){
-      strncpy (commands[n++], tbuf, MAX_MSG_LEN);
-    }
-    
-    /* HERE WE HAVE A COMMANDS ARRAY*/
-    /* HERE WE HAVE A COMMANDS ARRAY*/
-    /* HERE WE HAVE A COMMANDS ARRAY*/
-
-    //sscanf for parsing if needed 
-    //read commands, delimited by `
-    sscanf(, "%s`%s",);
-    fprintf(stderr, "exitcheck is %s\n",exitcheck);
-    //check to see if the beginning of the string is exit
-    if (!strcmp("exit",exitcheck)){
-      uv_close((uv_handle_t*) handle, on_close);
-      free(exitcheck);
-      free(buf->base);
-      return;
-    }
-    free(exitcheck);
+  if (!strncmp(req->buf.base,"exit",4)) {
+    uv_close((uv_handle_t*) handle, on_close);
+  } else {
+    scream(req);
   }
+
+  //checking the non-user portion
+  //   ---
+  //   BAN
+  //   ZONE
+  //   ---
+  // {
+  //   //brain mush need to relearn some stuff
+  //   //going to split message from commands
+  //   //using the char '~' to denote this
+  //  sscanf(req->buf.base, "%[^~]~")
+  //   //The plan tm
+  //   //<command>,...~<message>
+  //   //scan string and grab each substring and execute it
+  //   //once we hit delimiter we will send the message
+  // }
+  // {
+  //   // char* exitcheck = (char*)calloc(1, MAX_MSG_LEN*sizeof(char));
+  //   //
+  //   //repeat until all are parsed 
+  //   // for(;;)
+  //   char* commands[];
+  //   char* tbuf = malloc(sizeof(char)*MAX_MSG_LEN);
+  //   sscanf(req->buf.base, "%s~",tbuf);
+  //   commands = (char*)malloc(sizeof(char) * (strlen(tbuf)+1));
+  //   int n = 0;
+  //   char* ttbuf = malloc(sizeof(char)*MAX_MSG_LEN);
+  //
+  //   while (sscanf(tbuf, "%[^:]:%s",commands[n],ttbuf) == 2){
+  //     n += 1;
+  //     strncpy(tbuf, ttbuf, MAX_MSG_LEN); 
+  //   }
+  //   if (tbuf[0] != '\0'){
+  //     strncpy (commands[n++], tbuf, MAX_MSG_LEN);
+  //   }
+  //
+  //   //sscanf for parsing if needed 
+  //   //read commands, delimited by `
+  //   // sscanf(, "%s`%s",);
+  //   fprintf(stderr, "exitcheck is %s\n",exitcheck);
+  //   //check to see if the beginning of the string is exit
+  //   if (!strcmp("exit",exitcheck)){
+  //     uv_close((uv_handle_t*) handle, on_close);
+  //
+  //     free(exitcheck);
+  //     free(buf->base);
+  //     return;
+  //   }
+  //   free(exitcheck);
+  // }
   
-  scream(req);
   free(buf->base);
 }
 
@@ -161,14 +201,6 @@ void on_new_connection(uv_stream_t *server, int status){
   }
 }
 
-void add_user(uv_tcp_t* handle){
-  User* newusr = (User*) malloc(sizeof(User));
-  latestusr->next = newusr;
-  newusr->last = latestusr;
-  newusr->user_handle = (uv_stream_t*) handle;
-  newusr->next = NULL;
-  latestusr = newusr;
-}
 
 /* TODO:
  * --------------------
@@ -215,6 +247,13 @@ int main(int argc, char* argv[]){
 
   //bind the server to the address(it now 'exists')
   uv_tcp_bind(&server, (const struct sockaddr*)&addr, 0);
+
+
+  userlist = (User*) malloc(sizeof(User));
+  userlist->next = NULL; 
+  userlist->last = NULL;
+  latestusr = userlist;
+
   //listen at the socket given, using server casted to generic stream, with given acceptable backlog
   //what is done upon connection is determined by on_new_connection
   //returns non-0 if errored
@@ -223,13 +262,6 @@ int main(int argc, char* argv[]){
     fprintf(stderr, "Listen error %s\n",uv_strerror(r));
     return 1;
   }
-
-
-  userlist = (User*) malloc(sizeof(User));
-  userlist->next = NULL; 
-  userlist->last = NULL;
-  latestusr = userlist;
-  
 
 
   printf("Listening on %d\n",DEFAULT_PORT);
