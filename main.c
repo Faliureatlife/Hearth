@@ -2,7 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <uv.h>
-#include "uthash/src/uthash.h"
+#include <signal.h>
+#include "include/uthash/src/uthash.h"
 
 //ew portability
 #if defined(_WIN32)
@@ -43,8 +44,8 @@ struct User {
 } ;
 //we are hashing the user handle pointers, this allows us to O(1) lookup information about a user
 
-User* userlist;
-User* latestusr;
+User* userlist = NULL;
+// User* latestusr;
 
 void free_write_req(uv_write_t* req){
   write_req_t* wr = (write_req_t*) req;
@@ -64,20 +65,21 @@ void timer_callback(uv_timer_t* handle){
 
 //MAYBE: SPAWN THREAD TO DO THIS INSTEAD
 void rm_user(uv_stream_t* handle){
-  User* walker = userlist->next;// userlist is a dummy head for simplicity
-  while(walker != NULL){
-    if (walker->user_handle == handle){
-      if (!(walker->next != NULL)){
-        latestusr = walker->last;
-      } else {
-        walker->next->last = walker->last;
-      }
-      walker->last->next = walker->next;
-      free(walker);
-      return;
-    }
-    walker = walker->next;
+  User* searcher;
+  HASH_FIND_PTR(userlist, &handle, searcher);
+  if (searcher != NULL){
+    HASH_DEL(userlist, searcher);
+    free(searcher);
+    return;
   }
+}
+
+void die(int sig_num){
+  User* walker, *tmp;
+  HASH_ITER(hh, userlist, walker, tmp) {
+    rm_user(walker->user_handle);
+  }
+  uv_loop_close(loop);
 }
 
 void on_close(uv_handle_t* handle){
@@ -108,41 +110,41 @@ void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
 }
 
 void scream(write_req_t* req, char* name){
-  fprintf(stdout, "%s",req->buf.base);
-  User* walker = userlist->next;
-  while(walker != NULL){
+  fprintf(stdout, "%s :%s", name, req->buf.base);
+
+  User* walker;
+  for (walker = userlist; walker != NULL; walker = (User*)(walker->hh.next)){
     write_req_t* newreq = (write_req_t*) malloc(sizeof(write_req_t));
     newreq->buf = uv_buf_init(req->buf.base, req->buf.len);
     uv_write((uv_write_t*) newreq, walker->user_handle, &req->buf,1,echo_write);
-    walker = walker->next;
   }
 }
 
 //this will be useful once I save the existing userlist to a buffer but not rn
-int check_if_new_usr(){}
-
+// int check_if_new_usr(){}
 
 //check to make sure the handle is unique with HASH_FIND
 void add_user(uv_tcp_t* handle){
-  User* newusr = (User*) malloc(sizeof(User));
-  latestusr->next = newusr;
-  newusr->last = latestusr;
-  newusr->user_handle = (uv_stream_t*) handle;
-  newusr->next = NULL;
-  latestusr = newusr;
-
+  //to check for existence
+  User* newusr;
+  //check for existence already (should be impossible)
+  HASH_FIND_PTR(userlist, &handle, newusr);
+  if (newusr == NULL){
+    newusr = (User*) malloc(sizeof(User));
+    newusr->user_handle = (uv_stream_t*) handle;
+    HASH_ADD_PTR(userlist, user_handle, newusr);
+  }
 }
 
 void add_user_info(uv_stream_t* handle, uuid_t uuid, char* alias) {
-  User* walker = userlist->next;// userlist is a dummy head for simplicity
-  while(walker != NULL){
-    if (walker->user_handle == handle){
-      uuid_copy(walker->info.uuid, uuid);
-      strcpy(walker->info.name, alias);
+  User* findusr;
+
+  HASH_FIND_PTR(userlist, &handle, findusr);
+  if (findusr != NULL){
+      uuid_copy(findusr->info.uuid, uuid);
+      strcpy(findusr->info.name, alias);
       //idk strings are scary
       return;
-    }
-    walker = walker->next;
   }
 }
 
@@ -171,7 +173,9 @@ void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
     }
 
   } else {
-    scream(req);
+    User* currentusr;
+    HASH_FIND_PTR(userlist, &handle, currentusr);
+    scream(req,currentusr->info.name);
   }
 
 
@@ -315,11 +319,10 @@ int main(int argc, char* argv[]){
   //bind the server to the address(it now 'exists')
   uv_tcp_bind(&server, (const struct sockaddr*)&addr, 0);
 
-
-  userlist = (User*) malloc(sizeof(User));
-  userlist->next = NULL; 
-  userlist->last = NULL;
-  latestusr = userlist;
+  // userlist = (User*) malloc(sizeof(User));
+  // userlist->next = NULL; 
+  // userlist->last = NULL;
+  // latestusr = userlist;
 
   //listen at the socket given, using server casted to generic stream, with given acceptable backlog
   //what is done upon connection is determined by on_new_connection
@@ -330,7 +333,7 @@ int main(int argc, char* argv[]){
     return 1;
   }
 
-
+  signal(SIGINT, die);
   printf("Listening on %d\n",DEFAULT_PORT);
   return uv_run(loop, UV_RUN_DEFAULT); 
 }
