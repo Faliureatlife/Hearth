@@ -2,10 +2,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <uv.h>
+#include "uthash/src/uthash.h"
 
+//ew portability
+#if defined(_WIN32)
+  #include <rpc.h>
+#elif defined(__APPLE__) || defined(__linux__)
+  #include <uuid/uuid.h>
+#endif
+
+//choose something better when not testing
 #define DEFAULT_PORT 7000
 #define BACKLOG 128
 #define MAX_MSG_LEN 4096
+
+//THE GLOBAL VARIABLES THAT WE DO NEED(well not need but want, i already wrote the code)
 uv_loop_t* loop;
 struct sockaddr_in addr;
 
@@ -14,12 +25,23 @@ typedef struct {
   uv_buf_t buf;
 } write_req_t;
 
+typedef struct {
+  //UUID
+  uuid_t uuid;
+  //Alias
+  char name[MAX_MSG_LEN];
+  //any other user-specific information (role?)
+} Userinfo;
+
 typedef struct User User;
 struct User {
   User* next;
   User* last;
+  Userinfo info;
   uv_stream_t* user_handle;
+  UT_hash_handle hh;
 } ;
+//we are hashing the user handle pointers, this allows us to O(1) lookup information about a user
 
 User* userlist;
 User* latestusr;
@@ -40,14 +62,19 @@ void timer_callback(uv_timer_t* handle){
   printf("timer time\n");
 }
 
-//TODO: SPAWN THREAD TO DO THIS INSTEAD
+//MAYBE: SPAWN THREAD TO DO THIS INSTEAD
 void rm_user(uv_stream_t* handle){
   User* walker = userlist->next;// userlist is a dummy head for simplicity
   while(walker != NULL){
     if (walker->user_handle == handle){
+      if (!(walker->next != NULL)){
+        latestusr = walker->last;
+      } else {
+        walker->next->last = walker->last;
+      }
       walker->last->next = walker->next;
-      walker->next->last = walker->last;
       free(walker);
+      return;
     }
     walker = walker->next;
   }
@@ -61,7 +88,6 @@ void on_close(uv_handle_t* handle){
 void echo_write(uv_write_t* req, int status){
   if (status) fprintf(stderr, "Write error %s\n",uv_strerror(status));
   // free_write_req(req);
-  // no free shared buffer
   free(req);
 }
 
@@ -81,8 +107,8 @@ void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
   free(buf->base);
 }
 
-void scream(write_req_t* req){
-  fprintf(stderr, "screaming rn \n");
+void scream(write_req_t* req, char* name){
+  fprintf(stdout, "%s",req->buf.base);
   User* walker = userlist->next;
   while(walker != NULL){
     write_req_t* newreq = (write_req_t*) malloc(sizeof(write_req_t));
@@ -92,6 +118,11 @@ void scream(write_req_t* req){
   }
 }
 
+//this will be useful once I save the existing userlist to a buffer but not rn
+int check_if_new_usr(){}
+
+
+//check to make sure the handle is unique with HASH_FIND
 void add_user(uv_tcp_t* handle){
   User* newusr = (User*) malloc(sizeof(User));
   latestusr->next = newusr;
@@ -99,22 +130,50 @@ void add_user(uv_tcp_t* handle){
   newusr->user_handle = (uv_stream_t*) handle;
   newusr->next = NULL;
   latestusr = newusr;
+
 }
 
+void add_user_info(uv_stream_t* handle, uuid_t uuid, char* alias) {
+  User* walker = userlist->next;// userlist is a dummy head for simplicity
+  while(walker != NULL){
+    if (walker->user_handle == handle){
+      uuid_copy(walker->info.uuid, uuid);
+      strcpy(walker->info.name, alias);
+      //idk strings are scary
+      return;
+    }
+    walker = walker->next;
+  }
+}
 
 void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
   //this is where we do the input validation and processing of the commands etc.
   write_req_t* req = (write_req_t*) malloc(sizeof(write_req_t));
   req->buf = uv_buf_init(buf->base, nread);
   if (nread > (ssize_t)MAX_MSG_LEN){
-    sprintf(buf->base, "ERR: message too long; %d and the max is %d\n", nread, MAX_MSG_LEN);
+    //should really be handled preemptively by client
+    fprintf(stderr, "ERR: message too long; %d and the max is %d\n", nread, MAX_MSG_LEN);
   }
 
   if (!strncmp(req->buf.base,"exit",4)) {
     uv_close((uv_handle_t*) handle, on_close);
+  } else if (!strncmp(req->buf.base,"INFO~",5)){
+    //max len juuuust in case
+    char tchar1[MAX_MSG_LEN];
+    char tchar2[MAX_MSG_LEN];
+    uuid_t uuid;
+    sscanf(buf->base, "INFO~%[^~]~%[^~]",tchar1,tchar2);
+    //making sure that uuid is valid (0/false if valid)
+    if (uuid_parse(tchar1, uuid)){
+      fprintf(stderr, "Uh oh, invalid UUID\n");
+    } else {
+      add_user_info(handle, uuid, tchar2/*name*/);
+    }
+
   } else {
     scream(req);
   }
+
 
   //checking the non-user portion
   //   ---
@@ -184,17 +243,25 @@ void listening(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
   free(buf->base);
 }
 
+/*
+ * The process:
+ * New connection is made
+ * Client sends an automated message that introduces themself
+ * Send UUID, name, and any other acc info
+ */
 void on_new_connection(uv_stream_t *server, int status){
   if (status < 0){
     fprintf(stderr, "Error on connection: %s\n", uv_strerror(status));
     return;
   }
-  uv_tcp_t *client = (uv_tcp_t*) malloc(sizeof(uv_tcp_t));
+
+  uv_tcp_t* client = (uv_tcp_t*) malloc(sizeof(uv_tcp_t));
   uv_tcp_init(loop, client);
   //accept the connecion, handle initialized, server + client must be same loop
   if (uv_accept(server, (uv_stream_t*) client) == 0){
     fprintf(stderr, "newusr\n");
     add_user(client);
+    // fprintf(stderr, "A user is already active under this UUID\n If this causes issues to you then yell at the dev");
 
     //read from client, to the allocation callback (arg 2) and uses the function in (arg 3)
     uv_read_start((uv_stream_t*) client, alloc_buffer, listening);
