@@ -90,6 +90,8 @@ void on_close(uv_handle_t* handle){
 void echo_write(uv_write_t* req, int status){
   if (status) fprintf(stderr, "Write error %s\n",uv_strerror(status));
   // free_write_req(req);
+  write_req_t* wr = (write_req_t*) req;
+  free(wr->buf.base);
   free(req);
 }
 
@@ -111,12 +113,15 @@ void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
 
 void scream(write_req_t* req, char* name){
   fprintf(stdout, "%s :%s", name, req->buf.base);
-
+  size_t outlen = strlen(name) + strlen(" : ") + req->buf.len + 1;
   User* walker;
   for (walker = userlist; walker != NULL; walker = (User*)(walker->hh.next)){
+    char*outmsg = malloc(outlen);
+    snprintf(outmsg, outlen , "%s : %s \n", name, req->buf.base);
+
     write_req_t* newreq = (write_req_t*) malloc(sizeof(write_req_t));
-    newreq->buf = uv_buf_init(req->buf.base, req->buf.len);
-    uv_write((uv_write_t*) newreq, walker->user_handle, &req->buf,1,echo_write);
+    newreq->buf = uv_buf_init(outmsg, outlen - 1);
+    uv_write((uv_write_t*) newreq, walker->user_handle, &newreq->buf,1,echo_write);
   }
 }
 
@@ -148,6 +153,17 @@ void add_user_info(uv_stream_t* handle, uuid_t uuid, char* alias) {
   }
 }
 
+void change_name(uv_stream_t* handle, char* alias) {
+  User* findusr;
+
+  HASH_FIND_PTR(userlist, &handle, findusr);
+  if (findusr != NULL){
+      strcpy(findusr->info.name, alias);
+      //idk strings are scary
+      return;
+  }
+}
+
 void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
   //this is where we do the input validation and processing of the commands etc.
   write_req_t* req = (write_req_t*) malloc(sizeof(write_req_t));
@@ -160,18 +176,37 @@ void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
   if (!strncmp(req->buf.base,"exit",4)) {
     uv_close((uv_handle_t*) handle, on_close);
   } else if (!strncmp(req->buf.base,"INFO~",5)){
-    //max len juuuust in case
-    char tchar1[MAX_MSG_LEN];
-    char tchar2[MAX_MSG_LEN];
-    uuid_t uuid;
-    sscanf(buf->base, "INFO~%[^~]~%[^~]",tchar1,tchar2);
-    //making sure that uuid is valid (0/false if valid)
-    if (uuid_parse(tchar1, uuid)){
-      fprintf(stderr, "Uh oh, invalid UUID\n");
-    } else {
-      add_user_info(handle, uuid, tchar2/*name*/);
-    }
+      //max len juuuust in case
+      char tchar1[MAX_MSG_LEN];
+      char tchar2[MAX_MSG_LEN];
+      uuid_t uuid;
+      sscanf(buf->base, "INFO~%[^~]~%[^~]",tchar1,tchar2);
+      //making sure that uuid is valid (0/false if valid)
+      if (uuid_parse(tchar1, uuid)){
+        fprintf(stderr, "Uh oh, invalid UUID\n");
+      } else {
+        add_user_info(handle, uuid, tchar2/*name*/);
+      }
+  } else if (!strncmp(req->buf.base, "NAME~",5)){
+      char tchar1[MAX_MSG_LEN];
+      sscanf(buf->base, "NAME~%[^~]",tchar1);
+      change_name(handle, tchar1);
 
+  // idek what i was doing here 
+  //
+  // } else if (!strncmp(req->buf.base, "CHANNEL~",5)){
+  //     char tchar1[MAX_MSG_LEN];
+  //     char tchar2[MAX_MSG_LEN];
+  //     sscanf(buf->base, "CHANNEL~%[^~]~%[^~]",tchar1,tchar2);
+  //     change_channel(handle, tchar1);
+  //
+  // } else if (!strncmp(req->buf.base, "NAME~",5)){
+  //     char tchar1[MAX_MSG_LEN];
+  //     sscanf(buf->base, "NAME~%[^~]",tchar1);
+  //     change_name(handle, tchar1);
+    
+
+ 
   } else {
     User* currentusr;
     HASH_FIND_PTR(userlist, &handle, currentusr);
@@ -279,7 +314,10 @@ void on_new_connection(uv_stream_t *server, int status){
  *
  * - User ID
  * - Basic commands
- * - Channels
+ *
+ * - Channels this rn tbh just add the channel to the beginning of the string
+ *   thix iz actually client tbh
+ *
  * - Admin commands
  * - User profile storage
  * - Buffered Chat history
