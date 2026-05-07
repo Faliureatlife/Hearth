@@ -21,26 +21,32 @@
 uv_loop_t* loop;
 struct sockaddr_in addr;
 
+typedef struct{
+  char*           name;
+  int             default; //a bool 
+  UT_hash_handle  hh;
+  char**          required_permission; //tbh im not going to use this for a while
+} channel;
+
 typedef struct {
-  uv_write_t req;
-  uv_buf_t buf;
+  uv_write_t      req;
+  uv_buf_t        buf;
 } write_req_t;
 
 typedef struct {
-  //UUID
-  uuid_t uuid;
-  //Alias
-  char name[MAX_MSG_LEN];
+  uuid_t          uuid;
+  char            name[MAX_MSG_LEN];
   //any other user-specific information (role?)
 } Userinfo;
 
 typedef struct User User;
 struct User {
-  User* next;
-  User* last;
-  Userinfo info;
-  uv_stream_t* user_handle;
-  UT_hash_handle hh;
+  User*           next;
+  User*           last;
+  Userinfo        info;
+  uv_stream_t*    user_handle;
+  char*           channel;
+  UT_hash_handle  hh;
 } ;
 //we are hashing the user handle pointers, this allows us to O(1) lookup information about a user
 
@@ -113,12 +119,10 @@ void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
 
 void scream(write_req_t* req, char* name){
   fprintf(stdout, "%s :%s", name, req->buf.base);
-  size_t outlen = strlen(name) + strlen(" : ") + req->buf.len + 1;
   User* walker;
+  char* outmsg = req->buf.base;
+  size_t outlen = req->buf.len;
   for (walker = userlist; walker != NULL; walker = (User*)(walker->hh.next)){
-    char*outmsg = malloc(outlen);
-    snprintf(outmsg, outlen , "%s : %s \n", name, req->buf.base);
-
     write_req_t* newreq = (write_req_t*) malloc(sizeof(write_req_t));
     newreq->buf = uv_buf_init(outmsg, outlen - 1);
     uv_write((uv_write_t*) newreq, walker->user_handle, &newreq->buf,1,echo_write);
@@ -158,9 +162,9 @@ void change_name(uv_stream_t* handle, char* alias) {
 
   HASH_FIND_PTR(userlist, &handle, findusr);
   if (findusr != NULL){
-      strcpy(findusr->info.name, alias);
-      //idk strings are scary
-      return;
+    strcpy(findusr->info.name, alias);
+    //idk strings are scary
+    return;
   }
 }
 
@@ -185,13 +189,12 @@ void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
       if (uuid_parse(tchar1, uuid)){
         fprintf(stderr, "Uh oh, invalid UUID\n");
       } else {
-        add_user_info(handle, uuid, tchar2/*name*/);
+          add_user_info(handle, uuid, tchar2/*name*/);
       }
   } else if (!strncmp(req->buf.base, "NAME~",5)){
       char tchar1[MAX_MSG_LEN];
       sscanf(buf->base, "NAME~%[^~]",tchar1);
       change_name(handle, tchar1);
-
   // idek what i was doing here 
   //
   // } else if (!strncmp(req->buf.base, "CHANNEL~",5)){
@@ -199,18 +202,15 @@ void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
   //     char tchar2[MAX_MSG_LEN];
   //     sscanf(buf->base, "CHANNEL~%[^~]~%[^~]",tchar1,tchar2);
   //     change_channel(handle, tchar1);
-  //
-  // } else if (!strncmp(req->buf.base, "NAME~",5)){
-  //     char tchar1[MAX_MSG_LEN];
-  //     sscanf(buf->base, "NAME~%[^~]",tchar1);
-  //     change_name(handle, tchar1);
-    
-
  
   } else {
-    User* currentusr;
-    HASH_FIND_PTR(userlist, &handle, currentusr);
-    scream(req,currentusr->info.name);
+      User* currentusr;
+      HASH_FIND_PTR(userlist, &handle, currentusr);
+      char* name = currentusr->info.name;
+      size_t outlen = strlen(name) + 3 /*strlen(" : ")*/ + req->buf.len + 1;
+      snprintf(req->buf.base, outlen, "%s : %s\n",name);
+      req->buf.len = outlen;
+      scream(req,name);
   }
 
 
