@@ -14,11 +14,11 @@
 #define MAX_MSG_LEN 4096
 
 typedef struct{
-  char*           name;
+  char*           name; //the key
   int             default_channel; //a bool 
   UT_hash_handle  hh;
   char**          required_permission; //tbh im not going to use this for a while
-} channel;
+} Channel;
 
 typedef struct {
   uv_write_t      req;
@@ -27,7 +27,7 @@ typedef struct {
 
 typedef struct {
   uuid_t          uuid;
-  char            name[MAX_MSG_LEN];
+  char*           name;
   //any other user-specific information (role?)
 } Userinfo;
 
@@ -36,12 +36,14 @@ struct User {
   User*           next;
   User*           last;
   Userinfo        info;
-  uv_stream_t*    user_handle;
-  char*           channel;
+  uv_stream_t*    user_handle; //the key
+  char*           channel; //only needed for if we are trying to save bandwidth
   UT_hash_handle  hh;
 };
 //we are hashing the user handle pointers, this allows us to O(1) lookup information about a user
 
 extern User* userlist;
+extern Channel* channellist;
+extern void echo_write(uv_write_t* req, int status);
 
 #endif

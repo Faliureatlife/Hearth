@@ -14,7 +14,9 @@
 #define BACKLOG 128
 // #define MAX_MSG_LEN 4096
 
+uv_signal_t sigint;
 User* userlist = NULL;
+Channel* channellist = NULL;
 
 //THE GLOBAL VARIABLES THAT WE DO NEED(well not need but want, i already wrote the code)
 uv_loop_t* loop;
@@ -39,17 +41,20 @@ void rm_user(uv_stream_t* handle){
   HASH_FIND_PTR(userlist, &handle, searcher);
   if (searcher != NULL){
     HASH_DEL(userlist, searcher);
+    free(searcher->info.name);
+    free(searcher->channel);
     free(searcher);
     return;
   }
 }
 
-void die(int sig_num){
+void die(uv_signal_t* handle, int sig_num){
   User* walker, *tmp;
   HASH_ITER(hh, userlist, walker, tmp) {
     rm_user(walker->user_handle);
   }
-  uv_loop_close(loop);
+  uv_signal_stop(handle);
+  uv_stop(loop);
 }
 
 void on_close(uv_handle_t* handle){
@@ -81,30 +86,34 @@ void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
   free(buf->base);
 }
 
-void scream(write_req_t* req){
-  fprintf(stdout, "%s", req->buf.base);
+void scream(uv_buf_t* buf){
+  fprintf(stdout, "%s", buf->base);
   User* walker;
-  char* outmsg = req->buf.base;
-  size_t outlen = req->buf.len;
+  //we choose to reallocate every time because we dont know when the message will be dequeued
+  //to avoid stalling main thread we give every thread its own mem to write from
   for (walker = userlist; walker != NULL; walker = (User*)(walker->hh.next)){
-    write_req_t* newreq = (write_req_t*) malloc(sizeof(write_req_t));
-    newreq->buf = uv_buf_init(outmsg, outlen - 1);
-    uv_write((uv_write_t*) newreq, walker->user_handle, &newreq->buf,1,echo_write);
+    write_req_t* req = (write_req_t*) malloc(sizeof(write_req_t));
+    char* cpybuf = malloc(buf->len);
+    memcpy(cpybuf, buf->base, buf->len);
+    req->buf = uv_buf_init(cpybuf,buf->len);
+    uv_write((uv_write_t*) req, walker->user_handle, &req->buf,1,echo_write);
   }
+  free(buf->base);
+  free(buf);
 }
+
 
 void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
   //this is where we do the input validation and processing of the commands etc.
-  write_req_t* req = (write_req_t*) malloc(sizeof(write_req_t));
-  req->buf = uv_buf_init(buf->base, nread);
   if (nread > (ssize_t)MAX_MSG_LEN){
     //should really be handled preemptively by client
     fprintf(stderr, "ERR: message too long; %ld and the max is %d\n", nread, MAX_MSG_LEN);
   }
 
-  if (!strncmp(req->buf.base,"exit",4)) {
+  buf->base[nread] = '\0'; //just in case 
+  if (!strncmp(buf->base,"exit",4)) {
       uv_close((uv_handle_t*) handle, on_close);
-  } else if (!strncmp(req->buf.base,"INFO~",5)){
+  } else if (!strncmp(buf->base,"INFO~",5)){
       //max len juuuust in case
       char tchar1[MAX_MSG_LEN];
       char tchar2[MAX_MSG_LEN];
@@ -116,13 +125,12 @@ void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
       } else {
           add_user_info(handle, uuid, tchar2/*name*/);
       }
-
-  } else if (!strncmp(req->buf.base, "NAME~",5)){
+  } else if (!strncmp(buf->base, "NAME~",5)){
       char tchar1[MAX_MSG_LEN];
 
       sscanf(buf->base, "NAME~%[^~]",tchar1);
       change_name(handle, tchar1);
-  } else if (!strncmp(req->buf.base, "CHANNEL~",5)){
+  } else if (!strncmp(buf->base, "CHANNEL~",8)){
       char tchar1[MAX_MSG_LEN];
 
       sscanf(buf->base, "CHANNEL~%[^~]~",tchar1);
@@ -130,12 +138,14 @@ void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
   } else {
       User* currentusr; HASH_FIND_PTR(userlist, &handle, currentusr);
       char* name = currentusr->info.name;
-      size_t outlen = strlen(name) + 3 /*strlen(" : ")*/ + req->buf.len + 1;
+      size_t outlen = strlen(currentusr->channel) + strlen(name) + 3 /*'@' + '~' + ':'*/ + buf->len + 1;
+      uv_buf_t* newbuf = (uv_buf_t*) malloc(sizeof(uv_buf_t));
+      newbuf->base = (char*) malloc(outlen);
 
       //[channel,username,message]
-      snprintf(req->buf.base, outlen, "@%s~%s : %s\n",currentusr->channel, name, req->buf.base);
-      req->buf.len = outlen;
-      scream(req);
+      snprintf(newbuf->base, outlen, "@%s~%s:%s",currentusr->channel, name, buf->base);
+      newbuf->len = outlen;
+      scream(newbuf);
   }
   free(buf->base);
 }
@@ -208,12 +218,7 @@ void on_new_connection(uv_stream_t *server, int status){
  * - Connect to specified server
  */
 int main(int argc, char* argv[]){
-  //this is where we will enter into the server
-  //need to create IP binds, and general logic
-  //will begin with just an echo
   //messages formatted as MarkDown, add LaTeX support later
-  //format: Commands [0..n] | Message | \r\n 
-  // printf("libuv version %s\n",uv_version_string());
   loop = uv_default_loop();
   uv_tcp_t server;
 
@@ -235,7 +240,8 @@ int main(int argc, char* argv[]){
     return 1;
   }
 
-  signal(SIGINT, die);
+  uv_signal_init(loop, &sigint);
+  uv_signal_start(&sigint, die, SIGINT);
   printf("Listening on %d\n",DEFAULT_PORT);
   return uv_run(loop, UV_RUN_DEFAULT); 
 }
