@@ -1,57 +1,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <uv.h>
 #include <signal.h>
-#include "include/uthash/src/uthash.h"
 
-//ew portability
-#if defined(_WIN32)
-  #include <rpc.h>
-#elif defined(__APPLE__) || defined(__linux__)
-  #include <uuid/uuid.h>
-#endif
 
-//choose something better when not testing
-#define DEFAULT_PORT 7000
+#include "admin.h"
+#include "init.h"
+#include "commandHelpers.h"
+#include "types.h"
+
+
+#define DEFAULT_PORT 7000//choose something better when not testing
 #define BACKLOG 128
-#define MAX_MSG_LEN 4096
+// #define MAX_MSG_LEN 4096
+
+User* userlist = NULL;
 
 //THE GLOBAL VARIABLES THAT WE DO NEED(well not need but want, i already wrote the code)
 uv_loop_t* loop;
 struct sockaddr_in addr;
 
-typedef struct{
-  char*           name;
-  int             default; //a bool 
-  UT_hash_handle  hh;
-  char**          required_permission; //tbh im not going to use this for a while
-} channel;
-
-typedef struct {
-  uv_write_t      req;
-  uv_buf_t        buf;
-} write_req_t;
-
-typedef struct {
-  uuid_t          uuid;
-  char            name[MAX_MSG_LEN];
-  //any other user-specific information (role?)
-} Userinfo;
-
-typedef struct User User;
-struct User {
-  User*           next;
-  User*           last;
-  Userinfo        info;
-  uv_stream_t*    user_handle;
-  char*           channel;
-  UT_hash_handle  hh;
-} ;
-//we are hashing the user handle pointers, this allows us to O(1) lookup information about a user
-
-User* userlist = NULL;
-// User* latestusr;
 
 void free_write_req(uv_write_t* req){
   write_req_t* wr = (write_req_t*) req;
@@ -63,10 +31,6 @@ void free_write_req(uv_write_t* req){
 void alloc_buffer(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf){
   buf->base = (char*) malloc(suggested_size);
   buf->len = suggested_size;
-}
-
-void timer_callback(uv_timer_t* handle){
-  printf("timer time\n");
 }
 
 //MAYBE: SPAWN THREAD TO DO THIS INSTEAD
@@ -117,8 +81,8 @@ void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
   free(buf->base);
 }
 
-void scream(write_req_t* req, char* name){
-  fprintf(stdout, "%s :%s", name, req->buf.base);
+void scream(write_req_t* req){
+  fprintf(stdout, "%s", req->buf.base);
   User* walker;
   char* outmsg = req->buf.base;
   size_t outlen = req->buf.len;
@@ -129,56 +93,17 @@ void scream(write_req_t* req, char* name){
   }
 }
 
-//this will be useful once I save the existing userlist to a buffer but not rn
-// int check_if_new_usr(){}
-
-//check to make sure the handle is unique with HASH_FIND
-void add_user(uv_tcp_t* handle){
-  //to check for existence
-  User* newusr;
-  //check for existence already (should be impossible)
-  HASH_FIND_PTR(userlist, &handle, newusr);
-  if (newusr == NULL){
-    newusr = (User*) malloc(sizeof(User));
-    newusr->user_handle = (uv_stream_t*) handle;
-    HASH_ADD_PTR(userlist, user_handle, newusr);
-  }
-}
-
-void add_user_info(uv_stream_t* handle, uuid_t uuid, char* alias) {
-  User* findusr;
-
-  HASH_FIND_PTR(userlist, &handle, findusr);
-  if (findusr != NULL){
-      uuid_copy(findusr->info.uuid, uuid);
-      strcpy(findusr->info.name, alias);
-      //idk strings are scary
-      return;
-  }
-}
-
-void change_name(uv_stream_t* handle, char* alias) {
-  User* findusr;
-
-  HASH_FIND_PTR(userlist, &handle, findusr);
-  if (findusr != NULL){
-    strcpy(findusr->info.name, alias);
-    //idk strings are scary
-    return;
-  }
-}
-
 void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
   //this is where we do the input validation and processing of the commands etc.
   write_req_t* req = (write_req_t*) malloc(sizeof(write_req_t));
   req->buf = uv_buf_init(buf->base, nread);
   if (nread > (ssize_t)MAX_MSG_LEN){
     //should really be handled preemptively by client
-    fprintf(stderr, "ERR: message too long; %d and the max is %d\n", nread, MAX_MSG_LEN);
+    fprintf(stderr, "ERR: message too long; %ld and the max is %d\n", nread, MAX_MSG_LEN);
   }
 
   if (!strncmp(req->buf.base,"exit",4)) {
-    uv_close((uv_handle_t*) handle, on_close);
+      uv_close((uv_handle_t*) handle, on_close);
   } else if (!strncmp(req->buf.base,"INFO~",5)){
       //max len juuuust in case
       char tchar1[MAX_MSG_LEN];
@@ -187,83 +112,31 @@ void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
       sscanf(buf->base, "INFO~%[^~]~%[^~]",tchar1,tchar2);
       //making sure that uuid is valid (0/false if valid)
       if (uuid_parse(tchar1, uuid)){
-        fprintf(stderr, "Uh oh, invalid UUID\n");
+          fprintf(stderr, "Uh oh, invalid UUID\n");
       } else {
           add_user_info(handle, uuid, tchar2/*name*/);
       }
+
   } else if (!strncmp(req->buf.base, "NAME~",5)){
       char tchar1[MAX_MSG_LEN];
+
       sscanf(buf->base, "NAME~%[^~]",tchar1);
       change_name(handle, tchar1);
-  // idek what i was doing here 
-  //
-  // } else if (!strncmp(req->buf.base, "CHANNEL~",5)){
-  //     char tchar1[MAX_MSG_LEN];
-  //     char tchar2[MAX_MSG_LEN];
-  //     sscanf(buf->base, "CHANNEL~%[^~]~%[^~]",tchar1,tchar2);
-  //     change_channel(handle, tchar1);
- 
+  } else if (!strncmp(req->buf.base, "CHANNEL~",5)){
+      char tchar1[MAX_MSG_LEN];
+
+      sscanf(buf->base, "CHANNEL~%[^~]~",tchar1);
+      change_channel(handle, tchar1);
   } else {
-      User* currentusr;
-      HASH_FIND_PTR(userlist, &handle, currentusr);
+      User* currentusr; HASH_FIND_PTR(userlist, &handle, currentusr);
       char* name = currentusr->info.name;
       size_t outlen = strlen(name) + 3 /*strlen(" : ")*/ + req->buf.len + 1;
-      snprintf(req->buf.base, outlen, "%s : %s\n",name);
+
+      //[channel,username,message]
+      snprintf(req->buf.base, outlen, "@%s~%s : %s\n",currentusr->channel, name, req->buf.base);
       req->buf.len = outlen;
-      scream(req,name);
+      scream(req);
   }
-
-
-  //checking the non-user portion
-  //   ---
-  //   BAN
-  //   ZONE
-  //   ---
-  // {
-  //   //brain mush need to relearn some stuff
-  //   //going to split message from commands
-  //   //using the char '~' to denote this
-  //  sscanf(req->buf.base, "%[^~]~")
-  //   //The plan tm
-  //   //<command>,...~<message>
-  //   //scan string and grab each substring and execute it
-  //   //once we hit delimiter we will send the message
-  // }
-  // {
-  //   // char* exitcheck = (char*)calloc(1, MAX_MSG_LEN*sizeof(char));
-  //   //
-  //   //repeat until all are parsed 
-  //   // for(;;)
-  //   char* commands[];
-  //   char* tbuf = malloc(sizeof(char)*MAX_MSG_LEN);
-  //   sscanf(req->buf.base, "%s~",tbuf);
-  //   commands = (char*)malloc(sizeof(char) * (strlen(tbuf)+1));
-  //   int n = 0;
-  //   char* ttbuf = malloc(sizeof(char)*MAX_MSG_LEN);
-  //
-  //   while (sscanf(tbuf, "%[^:]:%s",commands[n],ttbuf) == 2){
-  //     n += 1;
-  //     strncpy(tbuf, ttbuf, MAX_MSG_LEN); 
-  //   }
-  //   if (tbuf[0] != '\0'){
-  //     strncpy (commands[n++], tbuf, MAX_MSG_LEN);
-  //   }
-  //
-  //   //sscanf for parsing if needed 
-  //   //read commands, delimited by `
-  //   // sscanf(, "%s`%s",);
-  //   fprintf(stderr, "exitcheck is %s\n",exitcheck);
-  //   //check to see if the beginning of the string is exit
-  //   if (!strcmp("exit",exitcheck)){
-  //     uv_close((uv_handle_t*) handle, on_close);
-  //
-  //     free(exitcheck);
-  //     free(buf->base);
-  //     return;
-  //   }
-  //   free(exitcheck);
-  // }
-  
   free(buf->base);
 }
 
@@ -308,6 +181,7 @@ void on_new_connection(uv_stream_t *server, int status){
 }
 
 
+
 /* TODO:
  * --------------------
  *  Server
@@ -349,18 +223,8 @@ int main(int argc, char* argv[]){
   //bound to IP addr + port
   // uv_ip6_addr("0.0.0.0", DEFAULT_PORT + 1,)
 
-  //test timer
-  uv_timer_t timer;
-  uv_timer_init(loop, &timer);
-  uv_timer_start(&timer, timer_callback, 1000, 0);
-
   //bind the server to the address(it now 'exists')
   uv_tcp_bind(&server, (const struct sockaddr*)&addr, 0);
-
-  // userlist = (User*) malloc(sizeof(User));
-  // userlist->next = NULL; 
-  // userlist->last = NULL;
-  // latestusr = userlist;
 
   //listen at the socket given, using server casted to generic stream, with given acceptable backlog
   //what is done upon connection is determined by on_new_connection
