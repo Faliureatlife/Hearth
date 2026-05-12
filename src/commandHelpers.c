@@ -53,6 +53,7 @@ void set_default(char* channelName){
   }
 }
 
+//channelname should never include a ,
 void new_channel(char* channelName, int def /*, char** req_permission */){
   Channel* newchannel;
   // HASH_FIND(hh, channellist, &channelName, strlen(channelName),newchannel); 	//maybe if the other doesnt work

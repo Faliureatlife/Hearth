@@ -1,4 +1,5 @@
 #include "init.h"
+#include "types.h"
 
 //check to make sure the handle is unique with HASH_FIND
 void add_user(uv_tcp_t* handle){
@@ -18,3 +19,28 @@ void add_user(uv_tcp_t* handle){
   }
 }
 
+void read_channels_from_file(char* filename){
+  //idea only 
+  int depth = 0; //depth of the current parse
+  //loop right amt of times
+  fscanf(outfile, "{\n name=%s\n default=%d\n perms={\n }}\n"/* VARIABLES */); //i havent actually written in the perms yet
+}
+
+/*
+ * {
+ *   name=               //string
+ *   default=            //bool
+ *   perms{
+ *                     //string
+ *                     //string
+ *   }
+ * }
+ */ 
+void write_channels_to_file(char* filename){
+  FILE* outfile = fopen(filename, "w");
+  Channel* walker, *tmp;
+  HASH_ITER(hh, channellist, walker, tmp){ //check to make sure that this method of write actually works
+    fprintf(outfile, "{\n name=%s\n default=%d\n perms={\n }}\n",walker->name,walker->default_channel); //i havent actually written in the perms yet
+    // fwrite(strcat(walker->name, ","), strlen(walker->name) + 1, 1, outfile);
+  }
+}
