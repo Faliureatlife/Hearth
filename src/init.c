@@ -1,5 +1,6 @@
 #include "init.h"
 #include "types.h"
+#include "commandHelpers.h"
 
 //check to make sure the handle is unique with HASH_FIND
 void add_user(uv_tcp_t* handle){
@@ -10,9 +11,8 @@ void add_user(uv_tcp_t* handle){
   if (newusr == NULL){
       newusr = (User*) malloc(sizeof(User));
       newusr->user_handle = (uv_stream_t*) handle;
-      // newusr->channel = "GenPop"; //its a placeholder okey
       newusr->channel = (char*) malloc(sizeof(char) * 256); 
-      strcpy(newusr->channel, "GenPop");
+      strcpy(newusr->channel, "GenPop"); //this needs to get replaced with putting them in a default channel
       newusr->info.name = (char*) malloc(sizeof(char) * 256); 
       newusr->info.name[0] = '\0'; //just in case
       HASH_ADD_PTR(userlist, user_handle, newusr);
@@ -21,10 +21,17 @@ void add_user(uv_tcp_t* handle){
 
 void read_channels_from_file(char* filename){
   //idea only 
-  int depth = 0; //depth of the current parse
-  //loop right amt of times
-  fscanf(outfile, "{\n name=%s\n default=%d\n perms={\n }}\n"/* VARIABLES */); //i havent actually written in the perms yet
+  FILE* outfile = fopen(filename, "r");
+  char* tempname = (char*) malloc(sizeof(char) * 256);
+  int defaultcheck;
+  //name not too long as checked in newchannel
+  while(fscanf(outfile, "{\n name=%s\n default=%d\n perms={\n }}\n",tempname, &defaultcheck) > 0 ){ //i havent actually written in the perms yet
+    new_channel(tempname, defaultcheck);
+    tempname = 0;
+    defaultcheck = 0;
+  }
 }
+
 
 /*
  * {

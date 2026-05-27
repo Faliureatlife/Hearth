@@ -55,11 +55,17 @@ void set_default(char* channelName){
 
 //channelname should never include a ,
 void new_channel(char* channelName, int def /*, char** req_permission */){
-  Channel* newchannel;
+  Channel* newchannel; 
+  int nameLen = strlen(channelName);
+  // fprintf(stderr, "%d\n",nameLen);
   // HASH_FIND(hh, channellist, &channelName, strlen(channelName),newchannel); 	//maybe if the other doesnt work
   HASH_FIND_STR(channellist, channelName, newchannel);
-  if (newchannel == NULL){
-      HASH_ADD_KEYPTR(hh,channellist, &channelName, strlen(channelName),newchannel);
+  if (newchannel == NULL && nameLen < 256){
+      newchannel = (Channel*)malloc(sizeof(Channel));
+      newchannel->name = channelName;
+      //this is where I say that we need to add in the permissions stuff
+      HASH_ADD_PTR(channellist, name, newchannel);
+      // HASH_ADD_KEYPTR(hh, channellist, &channelName, nameLen, newchannel);
       if (def != 0) {
           set_default(channelName);
       }

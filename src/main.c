@@ -53,6 +53,7 @@ void die(uv_signal_t* handle, int sig_num){
   HASH_ITER(hh, userlist, walker, tmp) {
     rm_user(walker->user_handle);
   }
+  write_channels_to_file("channels.mml");
   uv_signal_stop(handle);
   uv_stop(loop);
 }
@@ -95,7 +96,7 @@ void scream(uv_buf_t* buf){
     write_req_t* req = (write_req_t*) malloc(sizeof(write_req_t));
     char* cpybuf = malloc(buf->len);
     memcpy(cpybuf, buf->base, buf->len);
-    req->buf = uv_buf_init(cpybuf,buf->len);
+    req->buf = uv_buf_init(cpybuf,buf->len); //we are regenerating cpybuf everytime because &req->buf is freed everytime (not req->buf)
     uv_write((uv_write_t*) req, walker->user_handle, &req->buf,1,echo_write);
   }
   free(buf->base);
@@ -110,6 +111,7 @@ void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
     fprintf(stderr, "ERR: message too long; %ld and the max is %d\n", nread, MAX_MSG_LEN);
   }
 
+  //i should just allocate tchar here, just not rn for reasons i cannot deign
   buf->base[nread] = '\0'; //just in case 
   if (!strncmp(buf->base,"exit",4)) {
       uv_close((uv_handle_t*) handle, on_close);
@@ -135,6 +137,13 @@ void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
 
       sscanf(buf->base, "CHANNEL~%[^~]~",tchar1);
       change_channel(handle, tchar1);
+  } else if (!strncmp(buf->base, "NEWCHANNEL~",8)){
+      char tchar1[MAX_MSG_LEN];
+      char tchar2[MAX_MSG_LEN];
+
+      //permissions check goes here
+      sscanf(buf->base, "NEWCHANNEL~%[^~]~%[^~]~",tchar1,tchar2);
+      new_channel(tchar1,atoi(tchar2));
   } else {
       User* currentusr; HASH_FIND_PTR(userlist, &handle, currentusr);
       char* name = currentusr->info.name;
@@ -239,7 +248,8 @@ int main(int argc, char* argv[]){
     fprintf(stderr, "Listen error %s\n",uv_strerror(r));
     return 1;
   }
-
+  
+  // read_channels_from_file("channels.mml");
   uv_signal_init(loop, &sigint);
   uv_signal_start(&sigint, die, SIGINT);
   printf("Listening on %d\n",DEFAULT_PORT);
