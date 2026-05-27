@@ -3,3 +3,13 @@
  default=0
  perms={
  }}
+{
+ name=hello
+ default=0
+ perms={
+ }}
+{
+ name=hello
+ default=0
+ perms={
+ }}

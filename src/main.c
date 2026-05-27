@@ -144,6 +144,9 @@ void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
       //permissions check goes here
       sscanf(buf->base, "NEWCHANNEL~%[^~]~%[^~]~",tchar1,tchar2);
       new_channel(tchar1,atoi(tchar2));
+  } else if (!strncmp(buf->base, "LIST~",8)){
+      //passing handle so we send the info to the right person
+      list_channels(handle);
   } else {
       User* currentusr; HASH_FIND_PTR(userlist, &handle, currentusr);
       char* name = currentusr->info.name;
@@ -249,7 +252,7 @@ int main(int argc, char* argv[]){
     return 1;
   }
   
-  // read_channels_from_file("channels.mml");
+  read_channels_from_file("channels.mml");
   uv_signal_init(loop, &sigint);
   uv_signal_start(&sigint, die, SIGINT);
   printf("Listening on %d\n",DEFAULT_PORT);

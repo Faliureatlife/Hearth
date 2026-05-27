@@ -87,6 +87,18 @@ void rm_channel(char* channelName){
   }
 }
 
+void list_channels(uv_stream_t* handle){
+  Channel* walker, *tmp;
+  HASH_ITER(hh, channellist, walker, tmp){
+    yell_at_user(handle, walker->name);
+  }
+}
+// void die(uv_signal_t* handle, int sig_num){
+//   User* walker, *tmp;
+//   HASH_ITER(hh, userlist, walker, tmp) {
+//     rm_user(walker->user_handle);
+//   }
+
 
 void rename_channel(char* channelName, char* newName);
 

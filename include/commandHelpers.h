@@ -15,6 +15,8 @@ void rm_channel(char* channelName);
 
 void rename_channel(char* channelName, char* newName);
 
+void list_channels(uv_stream_t* handle);
+
 void change_channel_perms();
 void add_user_role();
 void rm_user_role();
