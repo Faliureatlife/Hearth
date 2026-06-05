@@ -31,7 +31,7 @@ void free_write_req(uv_write_t* req){
 
 //used as default read allocation, suggested_size is 65536 typically
 void alloc_buffer(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf){
-  buf->base = (char*) malloc(suggested_size);
+  buf->base = malloc(suggested_size + 1);
   buf->len = suggested_size;
 }
 
@@ -144,13 +144,13 @@ void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
       //permissions check goes here
       sscanf(buf->base, "NEWCHANNEL~%[^~]~%[^~]~",tchar1,tchar2);
       new_channel(tchar1,atoi(tchar2));
-  } else if (!strncmp(buf->base, "LIST~",8)){
+  } else if (!strncmp(buf->base, "LIST~",5)){
       //passing handle so we send the info to the right person
       list_channels(handle);
   } else {
       User* currentusr; HASH_FIND_PTR(userlist, &handle, currentusr);
       char* name = currentusr->info.name;
-      size_t outlen = strlen(currentusr->channel) + strlen(name) + 3 /*'@' + '~' + ':'*/ + buf->len + 1;
+      size_t outlen = strlen(currentusr->channel) + strlen(name) + 3 /*'@' + '~' + ':'*/ + nread + 1;
       uv_buf_t* newbuf = (uv_buf_t*) malloc(sizeof(uv_buf_t));
       newbuf->base = (char*) malloc(outlen);
 

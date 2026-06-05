@@ -27,7 +27,6 @@ void read_channels_from_file(char* filename){
   //name not too long as checked in newchannel
   while(fscanf(outfile, "{\n name=%s\n default=%d\n perms={\n }}\n",tempname, &defaultcheck) > 0 ){ //i havent actually written in the perms yet
     new_channel(tempname, defaultcheck);
-    tempname = 0;
     defaultcheck = 0;
   }
 }

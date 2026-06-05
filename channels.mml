@@ -1,15 +1,5 @@
 {
- name=pls
- default=0
- perms={
- }}
-{
- name=hello
- default=0
- perms={
- }}
-{
- name=hello
+ name=hellow
  default=0
  perms={
  }}

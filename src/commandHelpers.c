@@ -4,6 +4,7 @@
 void change_name(uv_stream_t* handle, char* alias) {
   User* findusr;
 
+  //check to see if name taken?
   HASH_FIND_PTR(userlist, &handle, findusr);
   if (findusr != NULL){
       if (strlen(alias) > 256) { //theres no reason to have that long a name
@@ -62,7 +63,7 @@ void new_channel(char* channelName, int def /*, char** req_permission */){
   HASH_FIND_STR(channellist, channelName, newchannel);
   if (newchannel == NULL && nameLen < 256){
       newchannel = (Channel*)malloc(sizeof(Channel));
-      newchannel->name = channelName;
+      newchannel->name = strdup(channelName);
       //this is where I say that we need to add in the permissions stuff
       HASH_ADD_PTR(channellist, name, newchannel);
       // HASH_ADD_KEYPTR(hh, channellist, &channelName, nameLen, newchannel);
@@ -89,15 +90,13 @@ void rm_channel(char* channelName){
 
 void list_channels(uv_stream_t* handle){
   Channel* walker, *tmp;
+  fprintf(stderr, "usr request channel list\n");
   HASH_ITER(hh, channellist, walker, tmp){
+    fprintf(stderr, "%s\n",walker->name);
     yell_at_user(handle, walker->name);
+
   }
 }
-// void die(uv_signal_t* handle, int sig_num){
-//   User* walker, *tmp;
-//   HASH_ITER(hh, userlist, walker, tmp) {
-//     rm_user(walker->user_handle);
-//   }
 
 
 void rename_channel(char* channelName, char* newName);
@@ -108,12 +107,14 @@ void rm_user_role();
 
 void yell_at_user(uv_stream_t* handle, char* msg){
   User* findusr;
+  char* cpymsg = strdup(msg);
 
   HASH_FIND_PTR(userlist, &handle, findusr);
   fprintf(stdout, "yelling %s at user %s", msg, findusr->info.name);
 
+  //add newline here
   write_req_t* req = (write_req_t*) malloc(sizeof(write_req_t));
-  size_t len = strlen(msg);
-  req->buf = uv_buf_init(msg,len);
+  size_t len = strlen(cpymsg);
+  req->buf = uv_buf_init(cpymsg,len);
   uv_write((uv_write_t*) req, findusr->user_handle, &req->buf,1,echo_write);
 }
