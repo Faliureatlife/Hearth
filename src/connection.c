@@ -97,6 +97,7 @@ typedef struct {
 } packetHeader;
 
 //no clue if this is useful
+//pretty sure not 23 Aug 2026
 typedef struct {
   packetHeader header;
   uv_stream_t* client;
@@ -113,6 +114,7 @@ void receive_Packet(uv_stream_t* client, ssize_t nread, uv_buf_t* buf){ //need t
   //when the data makes up (header + payloadlen) we will make it into a packet and process with decode_Packet which will handle it according to type
   //going to put all the packets into a LL that will contain packetInfo objects 
   //i need to make sure i am freeing the uv_buf_t properly somewhere 
+  decode_Packet(packet);
 }
 
 //packet gives me header, client*, and data*
@@ -122,7 +124,8 @@ void decode_Packet(packetInfo* packet){
     
   switch (type) {
     case RECEIVE_MESSAGE:
-      send_Message(packet->header.payloadLen, buf);
+      //dont need the connection because we are resending it to all users (cheaper than the check)
+      broadcast_Message(packet->header, packet->data);
       break;
     case CHANNEL_JOIN:
       break;
@@ -137,8 +140,8 @@ void decode_Packet(packetInfo* packet){
 
 //uses the pointers from the packet created in receive_Packet, packetInfo->data
 //should eventually make alternative that selects for roles
-void broadcast_Message(size_t len, char* buf, uv_stream_t* client){
-  User* currentUsr; HASH_FIND_PTR(userlist, &client, currentUsr);
+void broadcast_Message(packetHeader info, char* buf){
+  // User* currentUsr; HASH_FIND_PTR(userlist, &client, currentUsr);
   //redundant?
   char* name = currentUsr->info.name;
   char* message = (char*)malloc(len); //plus a few probably
