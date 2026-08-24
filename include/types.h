@@ -27,6 +27,7 @@ typedef struct {
 
 typedef struct {
   uuid_t          uuid;
+  char*           bio;
   char*           name;
   //any other user-specific information (role?)
 } Userinfo;

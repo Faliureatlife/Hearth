@@ -162,6 +162,7 @@ void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
   free(buf->base);
 }
 
+//this is for handling errors as part of the packet reciept callback
 void listening(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
   //check to make sure valid message (read and in buffer)
   if (nread > 0 && buf->len != 0){
