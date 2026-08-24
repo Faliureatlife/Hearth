@@ -104,6 +104,11 @@ typedef struct {
   const char* data;
 } packetInfo;
 
+typedef struct{
+  packetHeader inProgress;
+  char* rawData;
+} inProgress;
+
 //for packets that have two len and two data
 void encode_Packet(packetHeader* header, const char* data, uv_stream_t* client ){
 }
@@ -114,6 +119,12 @@ void receive_Packet(uv_stream_t* client, ssize_t nread, uv_buf_t* buf){ //need t
   //when the data makes up (header + payloadlen) we will make it into a packet and process with decode_Packet which will handle it according to type
   //going to put all the packets into a LL that will contain packetInfo objects 
   //i need to make sure i am freeing the uv_buf_t properly somewhere 
+  packetInfo packet = (packetInfo)malloc(sizeof(packetInfo)); //!!double check this
+  packetHeader processHeader;
+  packet.header = processHeader;
+
+  //working as if the entire packet is held at first
+
   decode_Packet(packet);
 }
 
@@ -121,6 +132,9 @@ void receive_Packet(uv_stream_t* client, ssize_t nread, uv_buf_t* buf){ //need t
 void decode_Packet(packetInfo* packet){
   //redundant but its easier to have this "alias"
   packetType type = (packetType)(packetHeader.type);
+  User* currentUsr; HASH_FIND_PTR(userlist, packet->client, currentUsr);
+  //i _think_ it makes sense to have it here unless its only neeeded for resending messages
+  char* name = currentUsr->info.name;
     
   switch (type) {
     case RECEIVE_MESSAGE:
@@ -140,10 +154,21 @@ void decode_Packet(packetInfo* packet){
 
 //uses the pointers from the packet created in receive_Packet, packetInfo->data
 //should eventually make alternative that selects for roles
-void broadcast_Message(packetHeader info, char* buf){
+void broadcast_Message(packetHeader info, const char* name, const char* buf){
   // User* currentUsr; HASH_FIND_PTR(userlist, &client, currentUsr);
   //redundant?
-  char* name = currentUsr->info.name;
-  char* message = (char*)malloc(len); //plus a few probably
-  message = snprintf(message, len, "");
+  uint32_t fullsize = info.payloadLen + strlen(name);
+  char* message = (char*)malloc(fullsize);
+  //its snprintf in case i DO want to format
+  message = snprintf(message, fullsize, "%s%s", name, buf);
+  
+
+
+  //int uv_write(uv_write_t *req, uv_stream_t *handle, const uv_buf_t bufs[], unsigned int nbufs, uv_write_cb cb)
+
+  User* walker;
+
+  for (walker = userlist; walker != NULL; walker = (User*)(walker->hh.next)){
+    uv_write((uv_write_t*)req, walker->user_handle, )
+  }
 }
