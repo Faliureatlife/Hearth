@@ -27,6 +27,13 @@
  *
  *
  */
+
+typedef struct{
+  int 
+}
+
+
+
 typedef struct {
   uint16_t channelID; //id of where it was sent
   uint16_t length;
@@ -99,7 +106,7 @@ typedef struct {
 //no clue if this is useful
 //pretty sure not 23 Aug 2026
 typedef struct {
-  packetHeader header;
+  packetHeader* header;
   uv_stream_t* client;
   const char* data;
 } packetInfo;
@@ -119,12 +126,11 @@ void receive_Packet(uv_stream_t* client, ssize_t nread, uv_buf_t* buf){ //need t
   //when the data makes up (header + payloadlen) we will make it into a packet and process with decode_Packet which will handle it according to type
   //going to put all the packets into a LL that will contain packetInfo objects 
   //i need to make sure i am freeing the uv_buf_t properly somewhere 
-  packetInfo packet = (packetInfo)malloc(sizeof(packetInfo)); //!!double check this
-  packetHeader processHeader;
-  packet.header = processHeader;
+  packetInfo* packet = (packetInfo*)malloc(sizeof(packetInfo)); 
+  packetHeader* processHeader = (packetHeader*)malloc(sizeof(packetHeader));
+  packet->header = processHeader;
 
   //working as if the entire packet is held at first
-
   decode_Packet(packet);
 }
 
