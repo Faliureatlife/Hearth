@@ -28,10 +28,6 @@
  *
  */
 
-typedef struct{
-  int 
-}
-
 
 
 typedef struct {
@@ -95,7 +91,6 @@ enum packetType {
 };
 
 
-
 typedef struct {
   uint8_t type; //need to cast just to be safe
   uint8_t version;
@@ -114,8 +109,11 @@ typedef struct {
 typedef struct{
   packetHeader inProgress;
   char* rawData;
+  uv_stream_t* client;
+  UT_hash_handle hh;
 } inProgress;
 
+inProgress* packetQueue = NULL;
 //for packets that have two len and two data
 void encode_Packet(packetHeader* header, const char* data, uv_stream_t* client ){
 }
@@ -127,8 +125,18 @@ void receive_Packet(uv_stream_t* client, ssize_t nread, uv_buf_t* buf){ //need t
   //going to put all the packets into a LL that will contain packetInfo objects 
   //i need to make sure i am freeing the uv_buf_t properly somewhere 
   packetInfo* packet = (packetInfo*)malloc(sizeof(packetInfo)); 
-  packetHeader* processHeader = (packetHeader*)malloc(sizeof(packetHeader));
-  packet->header = processHeader;
+  inProgress* currentData = NULL;
+  HASH_FIND_PTR(packetQueue, &client, currentData);
+  if (currentData != NULL){
+    //everything is allocated, just have to see what we have and add it 
+    // switch (currentData->inProgress.type){
+    if (sizeof(currentData +)
+    // }
+  } else {
+    packetHeader* processHeader = (packetHeader*)malloc(sizeof(packetHeader));
+    currentData = (inProgress*)malloc(nread); 
+    packet->header = processHeader;
+  }
 
   //working as if the entire packet is held at first
   decode_Packet(packet);

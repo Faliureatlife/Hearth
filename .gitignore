@@ -1,3 +1,6 @@
+#environment file
+.env/
+
 # Output files
 out
 
@@ -57,3 +60,4 @@ dkms.conf
 # debug information files
 *.dwo
 .aider*
+.env
