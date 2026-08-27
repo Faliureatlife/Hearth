@@ -179,11 +179,14 @@ void receive_Packet(uv_stream_t* client, ssize_t nread, uv_buf_t* buf){ //need t
     Payload:
       if (leftoverdata = payloadLen){
         char* tchar = (char*)malloc(payloadLen);
-        memcpy(tchar,currentData->rawData + readdata, payloadLen);
-        rawData = 
+        memcpy(tchar, currentData->rawData + readdata, payloadLen);
+        packet->header = currentData->partHeader;
+        packet->client = client;
+        packet->data = tchar;
       }
 
     Done:
+      currentData->rawData = currentData->rawData + readdata;  //need to realloc probably
 
   } else {
     packetHeader* processHeader = (packetHeader*)malloc(sizeof(packetHeader));
@@ -200,8 +203,6 @@ void receive_Packet(uv_stream_t* client, ssize_t nread, uv_buf_t* buf){ //need t
 
 
   
-  packet->header = currentData->partHeader;
-  packet->client = client;
   // packet->data =
   decode_Packet(packet);
 }
