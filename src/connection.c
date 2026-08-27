@@ -107,7 +107,8 @@ typedef struct {
 } packetInfo;
 
 typedef struct{
-  packetHeader inProgress;
+  packetHeader* partHeader;
+  uint32_t rawSize;
   char* rawData;
   uv_stream_t* client;
   UT_hash_handle hh;
@@ -124,21 +125,84 @@ void receive_Packet(uv_stream_t* client, ssize_t nread, uv_buf_t* buf){ //need t
   //when the data makes up (header + payloadlen) we will make it into a packet and process with decode_Packet which will handle it according to type
   //going to put all the packets into a LL that will contain packetInfo objects 
   //i need to make sure i am freeing the uv_buf_t properly somewhere 
+   
+  if (nread < 0) {break;} //TEMP ERROR HANDLING
+
   packetInfo* packet = (packetInfo*)malloc(sizeof(packetInfo)); 
   inProgress* currentData = NULL;
   HASH_FIND_PTR(packetQueue, &client, currentData);
-  if (currentData != NULL){
+
+
+  if (currentData != NULL){ readdata:
+    char* tempbuf = (char*)malloc(sizeof(uint64_t));
+    memcpy(tempbuf,rawData,rawSize);
+    memcpy(tempbuf + rawSize, buf, nread);
+    int readdata = 0;
+    int leftoverdata = nread + currentData.rawSize;
+
     //everything is allocated, just have to see what we have and add it 
-    // switch (currentData->inProgress.type){
-    if (sizeof(currentData +)
-    // }
+    if (currentData->partHeader->type == 0) {goto Ype;}
+    else if (currentData->partHeader->version == 0) {goto Ver;}
+    else if (currentData->partHeader->id == 0) {goto Di;}
+    else if (currentData->partHeader->payloadLen == 0) {goto Len;}
+    
+    Ype:
+      if (leftoverdata >= sizeof(uint8_t)) {//sizeof for portability?
+        //moving the data in char 1
+        currentData->partHeader->type = currentData->rawData[0 + readdata];
+        leftoverdata = leftoverdata - sizeof(uint8_t);
+        readdata = readdata + sizeof(uint8_t);
+      } else goto Done;
+    Ver:
+      if(leftoverdata >= sizeof(uint8_t)){
+        currentData->partHeader->version = currentData->rawData[0 + readdata];
+        leftoverdata = leftoverdata - sizeof(uint8_t);
+        readdata = readdata + sizeof(uint8_t);
+      } else goto Done;
+    Di:
+      if(leftoverdata >= sizeof(uint32_t)){
+        //heard this is better than memcpy for explicit ordering
+        currentData->partHeader->id = 
+          currentData->rawData[readdata] << 24 | currentData->rawData[readdata + 1] << 16 |
+          currentData->rawData[readdata+2] << 8 | currentData->rawData[readdata + 3];
+        leftoverdata = leftoverdata - sizeof(uint32_t);
+        readdata = readdata + sizeof(uint32_t);
+      } else goto Done;
+    Len:
+      if(leftoverdata >= sizeof(uint32_t)){
+        currentData->partHeader->payloadLen = 
+          currentData->rawData[readdata] << 24 | currentData->rawData[readdata + 1] << 16 |
+          currentData->rawData[readdata+2] << 8 | currentData->rawData[readdata + 3];
+        leftoverdata = leftoverdata - sizeof(uint32_t);
+        readdata = readdata + sizeof(uint32_t);
+      } else goto Done;
+    Payload:
+      if (leftoverdata = payloadLen){
+        char* tchar = (char*)malloc(payloadLen);
+        memcpy(tchar,currentData->rawData + readdata, payloadLen);
+        rawData = 
+      }
+
+    Done:
+
   } else {
     packetHeader* processHeader = (packetHeader*)malloc(sizeof(packetHeader));
+    processHeader->type = 0;
+    processHeader->version = 0;
+    processHeader->id = 0;
+    processHeader->payloadLen = 0;
     currentData = (inProgress*)malloc(nread); 
     packet->header = processHeader;
+    goto readdata;
   }
 
-  //working as if the entire packet is held at first
+  finishedPacket:
+
+
+  
+  packet->header = currentData->partHeader;
+  packet->client = client;
+  // packet->data =
   decode_Packet(packet);
 }
 
