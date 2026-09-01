@@ -15,7 +15,7 @@ void add_user(uv_tcp_t* handle){
       strcpy(newusr->channel, "GenPop"); //this needs to get replaced with putting them in a default channel
       newusr->info.name = (char*) malloc(sizeof(char) * 256); 
       newusr->info.name[0] = '\0'; //just in case
-      HASH_ADD_PTR(userlist, user_handle, newusr);
+      HASH_ADD_PTR(userlist, newusr->user_handle, newusr);
   }
 }
 

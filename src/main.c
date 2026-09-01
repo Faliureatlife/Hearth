@@ -8,6 +8,7 @@
 #include "init.h"
 #include "commandHelpers.h"
 #include "types.h"
+#include "connection.h"
 
 
 #define DEFAULT_PORT 7000//choose something better when not testing
