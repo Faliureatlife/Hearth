@@ -185,7 +185,7 @@ void receive_Packet(uv_stream_t* client, ssize_t nread, uv_buf_t* buf){ //need t
         packet->client = client;
         packet->data = tchar;
         //check to see if i have to delete anything else
-        HASH_DEL(packetlist,currentData);
+        HASH_DEL(packetlist,currentData)
         free(tempbuf);
         goto finishedPacket;
       }
