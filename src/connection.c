@@ -220,13 +220,13 @@ void receive_Packet(uv_stream_t* client, ssize_t nread, uv_buf_t* buf){ //need t
 //packet gives me header, client*, and data*
 void decode_Packet(packetInfo* packet){
   //redundant but its easier to have this "alias"
-  enum packetType type = packet->header->type;
+  enum packetType type = (enum packetType)packet->header->type;
   User* currentUsr; HASH_FIND_PTR(userlist, packet->client, currentUsr);
   //i _think_ it makes sense to have it here unless its only neeeded for resending messages
   char* name = currentUsr->info.name;
-    
+
   switch (type) {
-    case RECEIVE_MESSAGE:
+    case RECEIVE_MESSAGE: //we redistrubute to everyone (possibly even the sender to keep input messages seperate, one-source of truth?)
       //dont need the connection because we are resending it to all users (cheaper than the check)
       broadcast_Message(packet->header, name, packet->data);
       break;
@@ -243,22 +243,38 @@ void decode_Packet(packetInfo* packet){
     }
 }
 
+void echo_write (uv_write_t* req, int staus){
+  writeReq* wr = (writeReq*)req;
+  (*wr->refs)--;
+  if (msg->refs == 0){
+    free(wr->data);
+    free(we->refs);
+  }
+  free(wr);
+//idk yet
+}
 //uses the pointers from the packet created in receive_Packet, packetInfo->data
 //should eventually make alternative that selects for roles
 void broadcast_Message(packetHeader* info, const char* name, const char* buf){
   // User* currentUsr; HASH_FIND_PTR(userlist, &client, currentUsr);
   //redundant?
+  uint32_t* refs = (uint32_t*)malloc(sizeof(uint32_t));
+  *refs = 0;
   uint32_t fullsize = info->payloadLen + strlen(name);
   char* message = (char*)malloc(fullsize);
   //its snprintf in case i DO want to format
-  snprintf(message, fullsize, "%s%s", name, buf);
-  
-
-
-  //int uv_write(uv_write_t *req, uv_stream_t *handle, const uv_buf_t bufs[], unsigned int nbufs, uv_write_cb cb)
+  memcpy(message, name, strlen(name));
+  memcpy(message + strlen(name), buf, info->payloadLen);
 
   User* walker;
 
   for (walker = userlist; walker != NULL; walker = (User*)(walker->hh.next)){
+    writeReq* req = (writeReq*)malloc(sizeof(writeReq));
+    req->buf = uv_buf_init(message, fullsize);
+    req->data = message
+    req->refs = refs;
+    (*refs)++;
+
+    uv_write((uv_write_t* )&req->req, walker->user_handle, &req->buf,1,echo_write);
   }
 }

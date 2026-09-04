@@ -105,18 +105,18 @@ enum packetType {
 
 
 typedef struct {
-  uint8_t type; //need to cast just to be safe
-  uint8_t version;
-  uint32_t id;
-  uint32_t payloadLen;
+  uint8_t         type; //need to cast just to be safe
+  uint8_t         version;
+  uint32_t        id;
+  uint32_t        payloadLen;
 } packetHeader;
 
 //no clue if this is useful
 //pretty sure not 23 Aug 2026
-typedef struct {
-  packetHeader* header;
-  uv_stream_t* client;
-  const char* data;
+typedef struct {    
+  packetHeader*   header;
+  uv_stream_t*    client;
+  const char*     data;
 } packetInfo;
 
 typedef struct{
@@ -126,6 +126,14 @@ typedef struct{
   uv_stream_t*    client;
   UT_hash_handle  hh;
 } inProgress;
+
+typedef struct {
+  uv_write_t      req;
+  uv_buf_t        buf;
+  uint32_t*       refs;
+  char*           data;
+} writeReq;
+
 
 extern User* userlist;
 extern Channel* channellist;
