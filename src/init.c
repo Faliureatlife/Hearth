@@ -3,19 +3,22 @@
 #include "commandHelpers.h"
 
 //check to make sure the handle is unique with HASH_FIND
-void add_user(uv_tcp_t* handle){
+void add_user(uv_tcp_t* handl){
   //to check for existence
   User* newusr;
+  uv_stream_t* handle = (uv_stream_t*)handl;
   //check for existence already (should be impossible)
-  HASH_FIND_PTR(userlist, &handle, newusr);
+  HASH_FIND(hh, userlist, &handle, sizeof(uv_stream_t*), newusr);
+  // HASH_FIND_PTR(userlist, &handle, newusr);
   if (newusr == NULL){
       newusr = (User*) malloc(sizeof(User));
-      newusr->user_handle = (uv_stream_t*) handle;
+      newusr->user_handle = handle;
       newusr->channel = (char*) malloc(sizeof(char) * 256); 
       strcpy(newusr->channel, "GenPop"); //this needs to get replaced with putting them in a default channel
       newusr->info.name = (char*) malloc(sizeof(char) * 256); 
       newusr->info.name[0] = '\0'; //just in case
-      HASH_ADD_PTR(userlist, newusr->user_handle, newusr);
+      HASH_ADD(hh, userlist, user_handle, sizeof(uv_stream_t*), newusr);
+      // HASH_ADD_PTR(userlist, &newusr->user_handle, newusr);
   }
 }
 

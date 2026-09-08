@@ -18,6 +18,7 @@
 uv_signal_t sigint;
 User* userlist = NULL;
 Channel* channellist = NULL;
+inProgress* packetlist = NULL;
 
 //THE GLOBAL VARIABLES THAT WE DO NEED(well not need but want, i already wrote the code)
 uv_loop_t* loop;
@@ -64,13 +65,13 @@ void on_close(uv_handle_t* handle){
   free(handle);
 }
 
-void echo_write(uv_write_t* req, int status){
-  if (status) fprintf(stderr, "Write error %s\n",uv_strerror(status));
-  // free_write_req(req);
-  write_req_t* wr = (write_req_t*) req;
-  free(wr->buf.base);
-  free(req);
-}
+// void echo_write(uv_write_t* req, int status){
+//   if (status) fprintf(stderr, "Write error %s\n",uv_strerror(status));
+//   // free_write_req(req);
+//   write_req_t* wr = (write_req_t*) req;
+//   free(wr->buf.base);
+//   free(req);
+// }
 
 void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
   if (nread > 0) {
@@ -88,87 +89,12 @@ void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
   free(buf->base);
 }
 
-void scream(uv_buf_t* buf){
-  fprintf(stdout, "%s", buf->base);
-  User* walker;
-  //we choose to reallocate every time because we dont know when the message will be dequeued
-  //to avoid stalling main thread we give every thread its own mem to write from
-  for (walker = userlist; walker != NULL; walker = (User*)(walker->hh.next)){
-    write_req_t* req = (write_req_t*) malloc(sizeof(write_req_t));
-    char* cpybuf = malloc(buf->len);
-    memcpy(cpybuf, buf->base, buf->len);
-    req->buf = uv_buf_init(cpybuf,buf->len); //we are regenerating cpybuf everytime because &req->buf is freed everytime (not req->buf)
-    uv_write((uv_write_t*) req, walker->user_handle, &req->buf,1,echo_write);
-  }
-  free(buf->base);
-  free(buf);
-}
-
-
-void disseminate(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf){
-  //this is where we do the input validation and processing of the commands etc.
-  if (nread > (ssize_t)MAX_MSG_LEN){
-    //should really be handled preemptively by client
-    fprintf(stderr, "ERR: message too long; %ld and the max is %d\n", nread, MAX_MSG_LEN);
-  }
-
-  //i should just allocate tchar here, just not rn for reasons i cannot deign
-  buf->base[nread] = '\0'; //just in case 
-  if (!strncmp(buf->base,"exit",4)) {
-      uv_close((uv_handle_t*) handle, on_close);
-  } else if (!strncmp(buf->base,"INFO~",5)){
-      //max len juuuust in case
-      char tchar1[MAX_MSG_LEN];
-      char tchar2[MAX_MSG_LEN];
-      uuid_t uuid;
-      sscanf(buf->base, "INFO~%[^~]~%[^~]",tchar1,tchar2);
-      //making sure that uuid is valid (0/false if valid)
-      if (uuid_parse(tchar1, uuid)){
-          fprintf(stderr, "Uh oh, invalid UUID\n");
-      } else {
-          add_user_info(handle, uuid, tchar2/*name*/);
-      }
-  } else if (!strncmp(buf->base, "NAME~",5)){
-      char tchar1[MAX_MSG_LEN];
-
-      sscanf(buf->base, "NAME~%[^~]",tchar1);
-      change_name(handle, tchar1);
-  } else if (!strncmp(buf->base, "CHANNEL~",8)){
-      char tchar1[MAX_MSG_LEN];
-
-      sscanf(buf->base, "CHANNEL~%[^~]~",tchar1);
-      change_channel(handle, tchar1);
-  } else if (!strncmp(buf->base, "NEWCHANNEL~",8)){
-      char tchar1[MAX_MSG_LEN];
-      char tchar2[MAX_MSG_LEN];
-
-      //permissions check goes here
-      sscanf(buf->base, "NEWCHANNEL~%[^~]~%[^~]~",tchar1,tchar2);
-      new_channel(tchar1,atoi(tchar2));
-  } else if (!strncmp(buf->base, "LIST~",5)){
-      //passing handle so we send the info to the right person
-      list_channels(handle);
-  } else {
-      User* currentusr; HASH_FIND_PTR(userlist, &handle, currentusr);
-      char* name = currentusr->info.name;
-      size_t outlen = strlen(currentusr->channel) + strlen(name) + 3 /*'@' + '~' + ':'*/ + nread + 1;
-      uv_buf_t* newbuf = (uv_buf_t*) malloc(sizeof(uv_buf_t));
-      newbuf->base = (char*) malloc(outlen);
-
-      //[channel,username,message]
-      snprintf(newbuf->base, outlen, "@%s~%s:%s",currentusr->channel, name, buf->base);
-      newbuf->len = outlen;
-      scream(newbuf);
-  }
-  free(buf->base);
-}
-
 //this is for handling errors as part of the packet reciept callback
 void listening(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf){
   //check to make sure valid message (read and in buffer)
   if (nread > 0 && buf->len != 0){
     //go on to send the message out
-    disseminate(client,nread,buf);
+    receive_Packet(client, nread, buf);
     return;
   }
   //error case
