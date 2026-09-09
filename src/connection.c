@@ -129,8 +129,10 @@ void receive_Packet(uv_stream_t* client, ssize_t nread, uv_buf_t* buf){ //need t
 
     goto readdata;
   }
+  goto end;
   finishedPacket:
   decode_Packet(packet);
+  end:
 }
 
 //packet gives me header, client*, and data*
