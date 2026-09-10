@@ -8,7 +8,7 @@ import sys
 HOST = "127.0.0.1"
 PORT = 7000
 
-SEND_MESSAGE = 0x10
+SEND_MESSAGE = 0x11
 
 if len(sys.argv) < 2:
     print(f"usage: {sys.argv[0]} <message>")

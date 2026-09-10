@@ -103,6 +103,8 @@ void receive_Packet(uv_stream_t* client, ssize_t nread, uv_buf_t* buf){ //need t
         //check to see if i have to delete anything else
         HASH_DEL(packetlist,currentData);
         free(tempbuf);
+        free(currentData->rawData);
+        // free(currentData->partHeader)
         goto finishedPacket;
       }
 
@@ -139,7 +141,8 @@ void receive_Packet(uv_stream_t* client, ssize_t nread, uv_buf_t* buf){ //need t
 void decode_Packet(packetInfo* packet){
   //redundant but its easier to have this "alias"
   enum packetType type = (enum packetType)packet->header->type;
-  User* currentUsr; HASH_FIND_PTR(userlist, packet->client, currentUsr);
+  User* currentUsr; HASH_FIND_PTR(userlist, &packet->client, currentUsr);
+  if (currentUsr != NULL) {
   //i _think_ it makes sense to have it here unless its only neeeded for resending messages
   char* name = currentUsr->info.name;
 
@@ -159,12 +162,13 @@ void decode_Packet(packetInfo* packet){
     default:
       fprintf(stderr, "whoops I haven't implemented that packet type yet\n");
     }
+  }
 }
 
 void echo_write (uv_write_t* req, int staus){
   writeReq* wr = (writeReq*)req;
   (*wr->refs)--;
-  if (wr->refs == 0){
+  if (*wr->refs == 0){
     free(wr->data);
     free(wr->refs);
   }
@@ -179,6 +183,7 @@ void broadcast_Message(packetHeader* info, const char* name, const char* buf){
   uint32_t* refs = (uint32_t*)malloc(sizeof(uint32_t));
   *refs = 0;
   uint32_t fullsize = info->payloadLen + strlen(name);
+  if(!fullsize){return;}//agh crash
   char* message = (char*)malloc(fullsize);
   //its snprintf in case i DO want to format
   memcpy(message, name, strlen(name));
