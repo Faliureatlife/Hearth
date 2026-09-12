@@ -153,6 +153,11 @@ void decode_Packet(packetInfo* packet){
       break;
     case CHANNEL_JOIN:
       break;
+    case CHANNEL_LIST:
+      listChannel chan; 
+      memcpy(&chan, packet->data, packet->header->payloadLen);
+
+      break;
     case USER_GET:
       break;
     case USER_LEAVE:
