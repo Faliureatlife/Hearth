@@ -152,17 +152,37 @@ void decode_Packet(packetInfo* packet){
       broadcast_Message(packet->header, name, packet->data);
       break;
     case CHANNEL_JOIN:
+      //update the channel that the usr is registered to.
+      //optionally send ack
       break;
     case CHANNEL_LIST:
+      //packet containing all of the information
       listChannel chan; 
-      memcpy(&chan, packet->data, packet->header->payloadLen);
+      listChannel.text = malloc(sizeof(char) * 4096);// add in resize fixing later for massive things
+      Channel* walker;
+      for (walker = userlist; walker != NULL; walker = (User*)(walker->hh.next)){
+        memcpy(chan.text, walker->name, walker->namelen);
 
+      }
+      break;
+    case CHANNEL_NEW:
+      //packet saying the name of new channel
+      break;
+    case CHANNEL_RENAME:
+      //packet confirming the name
       break;
     case USER_GET:
+      //getting info on a specific usr
+      //send the info packet
       break;
     case USER_LEAVE:
+      //remove user from pool
+      //no responce needed
       break;
     case USER_UPDATE:
+      //change info on user
+      //maybe just USER_NEWNAME, USER_NEWBIO, USER_NEWPERM
+      //send copy of the userdata? or maybe ack
       break;
     default:
       fprintf(stderr, "whoops I haven't implemented that packet type yet\n");

@@ -16,6 +16,7 @@
 
 typedef struct{
   char*           name; //the key
+  ssize_t         namelen;
   int             default_channel; //a bool 
   UT_hash_handle  hh;
   char**          required_permission; //tbh im not going to use this for a while
