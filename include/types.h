@@ -29,7 +29,9 @@ typedef struct {
 
 typedef struct {
   uuid_t          uuid;
+  uint16_t        biolen;
   char*           bio;
+  uint16_t        namelen;
   char*           name;
   //any other user-specific information (role?)
 } Userinfo;
@@ -97,6 +99,7 @@ enum packetType {
   CHANNEL_LIST    = 0x21, //send list of all channels
   CHANNEL_JOIN    = 0x22, //use if we want to avoid client caching
   CHANNEL_REQ_NEW = 0x23, //usr request new channel
+  CHANNEL_RENAME  = 0x24, //rename channel
 
   USER_GET        = 0x30, //request for user information
   USER_UPDATE     = 0x31, //update selected user field

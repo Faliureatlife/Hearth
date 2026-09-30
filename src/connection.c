@@ -152,18 +152,12 @@ void decode_Packet(packetInfo* packet){
       broadcast_Message(packet->header, name, packet->data);
       break;
     case CHANNEL_JOIN:
+      change_channel(currentUsr, packet->data)
       //update the channel that the usr is registered to.
       //optionally send ack
       break;
     case CHANNEL_LIST:
-      //packet containing all of the information
-      listChannel chan; 
-      listChannel.text = malloc(sizeof(char) * 4096);// add in resize fixing later for massive things
-      Channel* walker;
-      for (walker = userlist; walker != NULL; walker = (User*)(walker->hh.next)){
-        memcpy(chan.text, walker->name, walker->namelen);
-
-      }
+      list_channels(currentUsr);
       break;
     case CHANNEL_NEW:
       //packet saying the name of new channel
@@ -190,6 +184,14 @@ void decode_Packet(packetInfo* packet){
   }
 }
 
+//using write_req_t (for single message)
+void echo_write2(uv_write_t* req, int status){
+  write_req_t* wr = (write_req_t*)req;
+  free(wr->buf->data);
+  free(wr);
+}
+
+//using writeReq (for messaging all)
 void echo_write (uv_write_t* req, int staus){
   writeReq* wr = (writeReq*)req;
   (*wr->refs)--;
@@ -198,24 +200,45 @@ void echo_write (uv_write_t* req, int staus){
     free(wr->refs);
   }
   free(wr);
-//idk yet
 }
+
 //uses the pointers from the packet created in receive_Packet, packetInfo->data
 //should eventually make alternative that selects for roles
-void broadcast_Message(packetHeader* info, const char* name, const char* buf){
+void broadcast_Message(packetHeader* info, uint16_t namelen, const char* name, const char* buf){
   // User* currentUsr; HASH_FIND_PTR(userlist, &client, currentUsr);
   //redundant?
   uint32_t* refs = (uint32_t*)malloc(sizeof(uint32_t));
   *refs = 0;
-  uint32_t fullsize = info->payloadLen + strlen(name);
+  uint32_t fullsize = info->payloadLen + namelen;
   if(!fullsize){return;}//agh crash
   char* message = (char*)malloc(fullsize);
-  //its snprintf in case i DO want to format
-  memcpy(message, name, strlen(name));
-  memcpy(message + strlen(name), buf, info->payloadLen);
+
+  memcpy(message, name, namelen);
+  memcpy(message + namelen, buf, info->payloadLen);
 
   User* walker;
+  /*
+   *client will recieve following:
+   *every time that we send a message to the client this must be what is sent.
+   * packetInfo _____________
+   *            |                         _______
+   *            |----->packetHeader------|
+   *            |                        | uint8:  type enum
+   *            |                        | uint8:  compatability version
+   *            |                        | uint32: message id (todo: change to be set by server)
+   *            |                        | uint32: payloadLength (size of data in payload (char*))
+   *            |                        |_______
+   *            |
+   *            |----->uv_stream_t
+   *            |
+   *            |----->char (data) this data is parsed according to the layout of the type
+   *            |
+   *            |_____________
+   *
+   * */
 
+
+  //!!! wait wasnt i supposed to be sending a sendMessage struct !? !!!
   for (walker = userlist; walker != NULL; walker = (User*)(walker->hh.next)){
     writeReq* req = (writeReq*)malloc(sizeof(writeReq));
     req->buf = uv_buf_init(message, fullsize);

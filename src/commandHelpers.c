@@ -88,16 +88,22 @@ void rm_channel(char* channelName){
   }
 }
 
-void list_channels(uv_stream_t* handle){
-  Channel* walker, *tmp;
-  fprintf(stderr, "usr request channel list\n");
-  HASH_ITER(hh, channellist, walker, tmp){
-    fprintf(stderr, "%s\n",walker->name);
-    yell_at_user(handle, walker->name);
+void list_channels(User* currentUsr){
+  listChannel chan; 
+  Channel* walker;
 
+  chan.length = 4096;
+  chan.text = malloc(sizeof(char) * 4096);// add in resize fixing later for massive things
+
+  uint16_t offset = 0;
+  write_req_t* req = (write_req_t*)malloc(sizeof(write_req_t));
+
+  for (walker = channellist; walker != NULL; walker = (Channel*)(walker->hh.next)){
+    memcpy(chan.text + offset, walker->name, walker->namelen);
+    offset += walker->namelen;
   }
+  uv_write((uv_write_t*)&req, currentUsr->user_handle, &req->buf,1,echo_write2);
 }
-
 
 void rename_channel(char* channelName, char* newName);
 
